@@ -1,0 +1,2 @@
+# Checkers
+Basic Checkers Game
