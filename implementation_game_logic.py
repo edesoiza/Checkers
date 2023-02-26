@@ -21,11 +21,11 @@ class CheckersGame:
         ncols = 2 * n + 2
         self.player1 = Player(1, nrows)
         self.player2 = Player(2, nrows)
-        self.board = Board(nrows, ncols, self.player1, self.player2)
+        self.board = CheckerBoard(nrows, ncols, self.player1, self.player2)
 
         self.turn = 1
         self.mod_to_player = {1:self.player1, 0:self.player2}
-        self.attempt_types = {"move": self.board._can_move_piece, "jump": self.board._can_jump_piece}
+        self.attempt_types = {"move": self._can_move_piece, "jump": self._can_jump_piece}
         self.turn_types = {"move":self.board.move_piece, "jump": self.board.jump_piece}
 
     def get_curr_player(self):
@@ -100,6 +100,52 @@ class CheckersGame:
         loc_tup = tuple([int(x) for x in raw_loc])
         return loc_tup
 
+    def _can_move_piece(self, curr_loc, new_loc):
+        """
+        Checks if piece at location can move to a new location
+
+        Input:
+            curr_loc (tuple): current location index of the piece
+            new_loc (tuple): new location index of the piece
+
+        Returns: bool
+        """
+        curr_loc_r, curr_loc_c = curr_loc
+        new_loc_r, new_loc_c = new_loc
+        piece = self.board.board[curr_loc_r][curr_loc_c]
+        if abs(new_loc_c - curr_loc_c) == 1:
+            if not piece.king and curr_loc_r - new_loc_r == 1:
+                return True
+            elif piece.king and abs(new_loc_r - curr_loc_r) == 1:
+                return True
+        return False
+
+    def _can_jump_piece(self, curr_loc, new_loc):
+        """
+        Checks if piece at location can jump another piece
+
+        Input:
+            curr_loc (tuple): current location index of the piece
+            new_loc (tuple): new location index of the piece
+        
+        Returns: bool
+        """
+        curr_loc_r, curr_loc_c = curr_loc
+        new_loc_r, new_loc_c = new_loc
+        curr_piece = self.board.board[curr_loc_r][curr_loc_c]
+
+        r_diff = curr_loc_r - new_loc_r
+        c_diff = curr_loc_c - new_loc_c
+
+        jumpover_r, jumpover_c = self.board.get_jumpover_piece_loc(curr_loc, new_loc)
+        jumpover_piece = self.board.board[jumpover_r][jumpover_c]
+
+        if (abs(r_diff) == 2 and abs(c_diff) == 2 and jumpover_piece and 
+        jumpover_piece != curr_piece):
+            if curr_piece.king or (not curr_piece.king and r_diff > 0):
+                return True
+        return False
+    
     def end_turn(self, loc):
         """
         Ends turn and updates values to prepare for the next turn of gameplay
@@ -109,8 +155,6 @@ class CheckersGame:
             
         Returns: None
         """
-        loc_r, loc_c = loc
-        piece = self.board.board[loc_r][loc_c]
         self.check_for_kingship(loc)
 
         if self._check_winner():
@@ -126,13 +170,13 @@ class CheckersGame:
         Checks if the piece being moved for the turn can be kinged
 
         Input:
-            loc (tuple): location idnex of the piece
+            loc (tuple): location index of the piece
         
         Returns: None
         """
         loc_r, loc_c = loc
         if loc_r == 0:
-            self.board[loc_r][loc_c].king_piece()
+            self.board.board[loc_r][loc_c].king_piece()
 
     def _check_winner(self):
         """
@@ -188,34 +232,17 @@ class Board:
             nrows (int): number of rows
             ncols (int): number of columns
         
-        Returns: ndarray
+        Returns: None
         """
-        board = np.full((nrows, ncols), None)
-        for i in range(nrows):
-            if i >= (nrows / 2 + 1):
-                piece = self.piece1
-            elif i <= (nrows / 2 - 2):
-                piece = self.piece2
-            else:
-                continue
-
-            if i % 2:
-                board[i,0::2] = piece
-            else:
-                board[i,1::2] = piece
-        return board
-
+        raise NotImplementedError("Board Creation Must be Implemented in Subclass")
+    
     def _get_repr_board(self):
         """
-        Generations the a simple representation of the numpy array that is 
-        used for the board
+        Generates a simple representation of the board attribute
         
-        Returns: ndarray
+        Returns: None
         """
-        p1_overwrite = np.where(self.board == self.piece1, 1, self.board)
-        p2_overwrite = np.where(p1_overwrite == self.piece2, 2, p1_overwrite)
-        none_overwrite = np.where(p2_overwrite == None, 0, p2_overwrite)
-        return none_overwrite
+        raise NotImplementedError("Board Representation Must be Implemented in Subclass")
 
     def check_loc(self, loc, current_player, expected_val = None):
         """
@@ -239,26 +266,6 @@ class Board:
         if expected_val and expected_val != current_player:
             raise Exception("not a valid location")
         
-    def _can_move_piece(self, curr_loc, new_loc):
-        """
-        Checks if piece at location can move to a new location
-
-        Input:
-            curr_loc (tuple): current location index of the piece
-            new_loc (tuple): new location index of the piece
-
-        Returns: bool
-        """
-        curr_loc_r, curr_loc_c = curr_loc
-        new_loc_r, new_loc_c = new_loc
-        piece = self.board[curr_loc_r][curr_loc_c]
-        if abs(new_loc_c - curr_loc_c) == 1:
-            if not piece.king and curr_loc_r - new_loc_r == 1:
-                return True
-            elif piece.king and abs(new_loc_r - curr_loc_r) == 1:
-                return True
-        return False
-        
     def move_piece(self, curr_loc, new_loc):
         """
         If piece at loc can move, moves piece 
@@ -275,33 +282,82 @@ class Board:
         temp = self.board[curr_loc_r][curr_loc_c]
         self.board[curr_loc_r][curr_loc_c] = self.board[new_loc_r][new_loc_c]
         self.board[new_loc_r][new_loc_c] = temp
-
-    def _can_jump_piece(self, curr_loc, new_loc):
+        
+    def _remove_piece(self, loc):
         """
-        Checks if piece at location can jump another piece
+        Removes piece from board 
 
         Input:
-            curr_loc (tuple): current location index of the piece
-            new_loc (tuple): new location index of the piece
-        
-        Returns: bool
+            loc (tuple): location index of piece
+
+        Returns: None
         """
-        curr_loc_r, curr_loc_c = curr_loc
-        new_loc_r, new_loc_c = new_loc
-        curr_piece = self.board[curr_loc_r][curr_loc_c]
+        r_loc, c_loc = loc
+        self.board[r_loc][c_loc] = None
 
-        r_diff = curr_loc_r - new_loc_r
-        c_diff = curr_loc_c - new_loc_c
+    def flip_board(self):
+        """
+        Flips board and its representation
+        
+        Returns: None
+        """
+        self.board = np.rot90(np.rot90(self.board))
+        self.view = self._get_repr_board()
 
-        jumpover_r, jumpover_c = self.get_jumpover_piece_loc(curr_loc, new_loc)
-        jumpover_piece = self.board[jumpover_r][jumpover_c]
+    def __str__(self):
+        """
+        Str representation of board 
 
-        if (abs(r_diff) == 2 and abs(c_diff) == 2 and jumpover_piece and 
-        jumpover_piece != curr_piece):
-            if curr_piece.king or (not curr_piece.king and r_diff > 0):
-                return True
-        return False
-                
+        Returns: str
+        """
+        return np.array2string(self.view, separator = " ")
+
+class CheckerBoard(Board):
+    def __init__(self, nrows, ncols, p1, p2):
+        self.player1 = p1
+        self.player2 = p2
+        self.piece1 = CheckerPiece(self.player1)
+        self.piece2 = CheckerPiece(self.player2)
+        self.board  = self._create_board(nrows, ncols)
+        self.view = self._get_repr_board()
+
+    def _create_board(self, nrows, ncols):
+        """
+        Initializes the board given the dimensions of rows and columns
+        
+        Input:
+            nrows (int): number of rows
+            ncols (int): number of columns
+        
+        Returns: ndarray
+        """
+        board = np.full((nrows, ncols), None)
+        for i in range(nrows):
+            if i >= (nrows / 2 + 1):
+                piece = self.piece1
+            elif i <= (nrows / 2 - 2):
+                piece = self.piece2
+            else:
+                continue
+
+            if i % 2:
+                board[i,0::2] = piece
+            else:
+                board[i,1::2] = piece
+        return board
+        
+    def _get_repr_board(self):
+        """
+        Generate a simple representation of the numpy array that is 
+        used for the board
+        
+        Returns: ndarray
+        """
+        p1_overwrite = np.where(self.board == self.piece1, 1, self.board)
+        p2_overwrite = np.where(p1_overwrite == self.piece2, 2, p1_overwrite)
+        none_overwrite = np.where(p2_overwrite == None, 0, p2_overwrite)
+        return none_overwrite
+
     def get_jumpover_piece_loc(self, curr_loc, new_loc):
         """
         Finds and returns the location index of the piece in between the points
@@ -334,35 +390,6 @@ class Board:
         """
         self._remove_piece(self.get_jumpover_piece_loc(curr_loc, new_loc))
         self.move_piece(curr_loc, new_loc)
-        
-    def _remove_piece(self, loc):
-        """
-        Removes piece from board 
-
-        Input:
-            loc (tuple): location index of piece
-
-        Returns: None
-        """
-        r_loc, c_loc = loc
-        self.board[r_loc][c_loc] = None
-
-    def flip_board(self):
-        """
-        Flips board and its representation
-        
-        Returns: None
-        """
-        self.board = np.rot90(np.rot90(self.board))
-        self.view = self._get_repr_board()
-
-    def __str__(self):
-        """
-        Str representation of board 
-
-        Returns: str
-        """
-        return np.array2string(self.view, separator = " ")
 
 class Piece: 
     '''
@@ -373,11 +400,14 @@ class Piece:
         Constructor
         """
         self.player = player
+
+class CheckerPiece(Piece):
+    def __init__(self, player):
+        self.player = player
         self.king = False
 
     def king_piece(self):
         self.king = True
-
 
 class Player:
     """
@@ -391,7 +421,6 @@ class Player:
         self.player_num = player_num
         n = (nrows - 2) // 2
         self.piece_count = n * (n+1)
-        print(self.piece_count)
 
     def __str__(self):
         return "player {}".format(self.player_num)
